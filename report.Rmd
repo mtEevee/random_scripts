@@ -1,0 +1,157 @@
+---
+title: "Treatment response study"
+author: "Elizaveta Bezrukova"
+output: pdf_document
+output_file: "report.pdf"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+library(epitools) #for Wald CI and odds ratio
+library(readr) #for reading unformatted text
+library(knitr) #for table formatting
+library(kableExtra) #for table formatting
+
+#data preparation
+rawdata <- read.csv("resp1.csv", sep = '@')
+#summary(rawdata)
+#sapply(rawdata,function(x) sum(is.na(x))) #check for missing values
+data <- rawdata[,c(1,4,5)]
+colnames(data)[c(2,3)] <- c("treatment", "response")
+data$treatment <- as.factor(data$treatment)
+data$response <- as.factor(ifelse(data$response=="CR" | data$response=="PR",
+                                "responder",
+                                "non-responder"))
+
+#model 1
+logreg1 <- glm(response ~ treatment, family = binomial, data = data)
+logreg1_sum <- summary(logreg1)
+exp_coef1 <- exp(cbind(OR = coef(logreg1), confint.default(logreg1)))
+OR1 <- oddsratio.wald(table(data[,c(2,3)]))
+result1 <- oddsratio.wald(table(data[,c(2,3)]), rev = "rows") #odds of treatment 1 relative to odds of treatment 2
+output1 <- paste(c(format(round(result1$measure[2,1], 3), nsmall=3),
+                  ' (',
+                  format(round(result1$measure[2,2], 3), nsmall=3),
+                  ', ',
+                  format(round(result1$measure[2,3], 3), nsmall=3),
+                  ')'),
+                collapse='')
+#model2  
+logreg2 <- glm(response ~ treatment * gender, family = binomial, data = data)
+logreg2_sum <- summary(logreg2)
+p <- format(round(logreg2_sum$coefficients[4,4],3), nsmall=3) #p-value of interaction
+exp_coef2 <- exp(cbind(OR = coef(logreg2), confint.default(logreg2)))
+#treatment1:treatment2 | female
+result2a <- oddsratio.wald(table(data[data$gender=='FEMALE',c(2,3)]), rev = "rows")
+output2a <- paste(c(format(round(result2a$measure[2,1], 3), nsmall=3),
+                   ' (',
+                   format(round(result2a$measure[2,2], 3), nsmall=3),
+                   ', ',
+                   format(round(result2a$measure[2,3], 3), nsmall=3),
+                   ')'),
+                 collapse='')
+#treatment1:treatment2 | male
+result2b <- oddsratio.wald(table(data[data$gender=='MALE',c(2,3)]), rev = "rows")
+output2b <- paste(c(format(round(result2b$measure[2,1], 3), nsmall=3),
+                    ' (',
+                    format(round(result2b$measure[2,2], 3), nsmall=3),
+                    ', ',
+                    format(round(result2b$measure[2,3], 3), nsmall=3),
+                    ')'),
+                  collapse='')
+#female:male | treatment1
+result2c <- oddsratio.wald(table(data[data$treatment=='1',c(1,3)]), rev = "rows")
+output2c <- paste(c(format(round(result2c$measure[2,1], 3), nsmall=3),
+                    ' (',
+                    format(round(result2c$measure[2,2], 3), nsmall=3),
+                    ', ',
+                    format(round(result2c$measure[2,3], 3), nsmall=3),
+                    ')'),
+                  collapse='')
+#female:male | treatment2
+result2d <- oddsratio.wald(table(data[data$treatment=='2',c(1,3)]), rev = "rows")
+output2d <- paste(c(format(round(result2d$measure[2,1], 3), nsmall=3),
+                    ' (',
+                    format(round(result2d$measure[2,2], 3), nsmall=3),
+                    ', ',
+                    format(round(result2d$measure[2,3], 3), nsmall=3),
+                    ')'),
+                  collapse='')      
+
+#Formatting the output table
+text <- read_file("answer.txt")
+output <- rbind(output1, output2a, output2b, output2c, output2d, p)
+rownames(output) <- c("ODDS RATIO (95% CI): Treatment 1 VS. Treatment 2",
+                      "ODDS RATIO (95% CI): Treatment 1 VS. Treatment 2 (Female)",
+                      "ODDS RATIO (95% CI): Treatment 1 VS. Treatment 2 (Male)",
+                      "ODDS RATIO (95% CI): Female VS. Male (Treatment 1)",
+                      "ODDS RATIO (95% CI): Female VS. Male (Treatment 2) ",
+                      "INTERACTION P-VALUE")
+colnames(output) <- c("RESPONSE RATE")
+```
+## Model 1
+The odds of an event are a probability of this event occurring divided by a probability of this event not occuring: $p(x)/(1-p(x))$. Odds ratio is a ratio of odds of two events. For example, in case of the first model we have 2 variables (treatment and response), each with 2 levels, resulting in the total of 4 combinations, or possible events: 
+
+- a person received treatment 1 and showed a response (56 cases)
+- a person received treatment 1 and showed no response (236 cases)
+- a person received treatment 2 and showed a response (36 cases)
+- a person received treatment 2 and showed no response (254 cases).
+
+We can calculate 4 probabilities for each of this event. But, since we are interested in odds and not probabilities, we calculate the ratio of probabilities to obtain the odds. For our example, the odds of getting a response while getting treatment 1 are the probability of response with treatment 1 ($56/292 = 0.192$) divided by the probability of no response with treatment 1 ($236/292 = 0.808$), or simplified: $56/236 = 0.237$. In the same way we can obtain the odds of getting a response while getting treatment 2: $36/254 = 0.142$. The ratio of the odds for treatment 1 to the odds for treatment 2 is $(56/236)/(36/254) = 1.674$. It means that the odds of response for treatment 1 are 1.674 times, or 67.4% higher than the odds of response for treatment 2. Vice versa, we can calculate the ratio of the odds for treatment 2 to the odds for treatment 1: $(36/254)/(56/236) = 0.597$. In general, an odds ratio of 1 would correspond to equal odds of both events under comparison, values greater than 1 imply that the odds for the first compared event are higher than for the second one and values smaller than 1 correspond to the opposite situation.
+
+### Model 1 coefficients (exp-transformed)
+```{r}
+exp_coef1
+```
+Odds ratio can also be inferred from the coefficients of logistic regression model. The output for logistic regression contains B-coefficients, but their interpretation is different from those of a linear regression. In logistic regression, they correspond to logarithms of odds. We can obtain actual odds from the model coefficients by exponentiating them. In our model, the regression coefficient for treatment is -0.5153. By taking its exponent, we get 0.597, which is the same as the odds ratio for treatment 2 over treatment 1 reported eralier. Intercept of our model can also be transformed in this way, the result would be not the odds ratio but just odds for one level of treatment (in our case treatment 1: $e^{-1.439} = 0.237$, equal to the odds calculated earlier).
+
+Because odds ratios are a result of an estimate, we report them together with a confidence interval. A confidence interval is a range where the real value of the estimated parameter can be found with a certain probability. For example, we have a 95% confidence interval (0.379, 0.941), which means that if the study is repeated many times, in 95% of cases we could expect the true value of odds ratio (estimated to be 0.597 in our example) to lie within this interval.
+
+The output from models with several predictors contain only general information about B-coefficients and significance of predictors, so the odds ratios for specific contrasts are easier to track and control if calculated separately.
+
+```{r}
+knitr::kable(output, "latex", booktabs = T) %>%
+  kable_styling(latex_options = "basic", full_width = F, position = "left") %>%
+  add_header_above(c("Logistic regression for subjects response" = 2), align = "c")
+```
+
+## Model 2
+For the second model, the obtained four odds ratios can be treated as ratio of odds between two levels of one predictor, keeping the other predictor fixed at one level. 
+The odds ratios reported in the table are ratios of odds for first condition relative to the odds of second condition. After exponential transform, coefficients obtained in a regression model show odds ratio of the opposite case (second condition to first one). 
+
+### Model 2 coefficients (exp-transformed)
+```{r}
+exp_coef2
+```
+- The intercept is associated with the odds of response with treatment 1 for female group ($e^{-1.584} = 0.205 = 24/117$).
+- The coefficient for treatment (-0.307) is associated with the odds of response for treatment 2 relative to the odds of response for treatment 1, while the group is fixed to only female subjects ($e^{-0.307} = 0.736 = (16*117) / (24*106)$).
+- The coefficient for gender (0.271) is associated with the odds of response for male participants relative to the odds of response for female participants, while the treatment is fixed to treatment 1 ($e^{0.271} = 1.311 = (32*117 / (24*119)$).
+- The coefficient for interaction term is associated with the odds ratio of female with treatment 1 relative to male with treatment 1, divided by odds ratio of female with treatment 2 relative to male with treatment 2 ($e^{-0.381} = 0.683 = (24*119*20*106) / (32*117*16*148)$)
+
+From the odds ratios reported in the table:
+
+- Within the group of female subjects, the odds for successful (responsive) treatment 1 are 1.359 times larger than the odds for successful treatment 2, or 35.9% higher. However, taking into account confidence interval (0.685, 2.696), we can not be confident in this result: if replicated, the study can in some cases result in odds ratio values less than 1, meaning the opposite direction of effect (treatment 2 having higher odds).
+- Within the group of male subjects, the odds of successful treatment 1 are almost 2 times larger than the odds for successful treatment 2, or 99% higher. And confidence interval enables to say that in 95% of cases the odds for treatment 1 within this group will be higher than the odds for treatment 2, so we can be quite confident in this effect.
+- Within the group of participants who received treatment 1, the odds of successful treatment for female subjects are about 23.7% lower than the odds of successful treatment for male subjects. But again, confidence interval assumes that both higher and lower than 1 ratios are possible in 95% of replication cases, so this result should not be considered reliable.
+- Finally, within the group of participants who received treatment 2, the odds of successful treatment for female subjects is 11.7% higher than the odds of successful treatment for male subjects. However, since confidence interval again assumes a possibility of ratios lower and higher than 1 (being somewhat skewed to ratios higher than 1), the result shouldn’t be considered reliable. 
+
+Taken together, out of the four contrasts there is only one case where we can be sure about the effect (male group). Based on this and the fact that subgroups are greatly disbalanced with very small number of subject who showed response, I would say that these results do not show enough evidence to claim an interaction effect between gender and treatment. The results of regression model also demonstrated no statistical significance for this interaction term (p-value = 0.415). 
+
+P-value is the probability of false rejection of null hypothesis (type I error), i.e. stating that there is a statistically significant effect while in fact it’s not there. In other words, p-value can tell us how probable it is to obtain similar or more extreme results by chance. If this probability is high (e.g. >0.05), it means that there is a >5% probability to obtain similar results by chance, which is not considered to be statistically reliable (significant).
+
+In our logistic regression model, interaction term has a p-value of 0.415, which is much greater than the accepted 0.05 threshold. It means that there are no statistically significant evidence to claim that response may be different depending on the combination of gender and treatment type. In other words, there is no statistically significant difference between males and females in terms of how they response to treatment 1 and 2. So, introducing gender factor into the model does not add to its informativeness and does not help to identify any importance of gender in the framework of this specific study. This is an important conclusion if we speak about effectiveness of treatment - it may mean that both tested treatments have similar effect on male and female patients. However, if our main interest is to compare 2 treatments, then the model with only one predictor (treatment) would be sufficient. And in fact, the first model (without gender) was able to identify the significance of different treatment types.
+
+## Supplement
+### Model 1 summary
+``` {r}
+logreg1_sum
+```
+
+### Model 2 summary
+``` {r}
+logreg2_sum
+```
+
